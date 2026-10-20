@@ -44,16 +44,18 @@ final class NetworkScanner: ObservableObject {
             return
         }
 
-        subnetDescription = "\(interface.address)  ·  mask \(interface.netmask)"
         let hosts = LocalNetwork.hostAddresses(address: interface.address,
                                                netmask: interface.netmask)
 
-        guard !hosts.isEmpty else {
+        guard let first = hosts.first, let last = hosts.last else {
             statusMessage = "Couldn't work out which subnet to scan."
             isScanning = false
             return
         }
 
+        // Show the exact range being probed, which also makes it clear when a
+        // very large subnet has been narrowed to the local /24.
+        subnetDescription = "\(interface.address)  ·  scanning \(first)–\(last)"
         statusMessage = "Scanning \(hosts.count) addresses…"
 
         let total = hosts.count

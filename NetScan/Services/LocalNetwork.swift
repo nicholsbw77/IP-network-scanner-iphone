@@ -50,6 +50,11 @@ enum LocalNetwork {
 
     /// Every usable host address in the subnet defined by `address` and
     /// `netmask`, excluding the network and broadcast addresses.
+    /// Subnets with more usable hosts than this are not swept in full; instead
+    /// the scan falls back to the /24 around the device. A /22 (1022 hosts) is
+    /// the largest mask still scanned completely.
+    static let maxFullScanHosts: UInt32 = 1024
+
     static func hostAddresses(address: String, netmask: String) -> [String] {
         guard let addr = ipv4ToUInt32(address),
               let mask = ipv4ToUInt32(netmask) else { return [] }
@@ -58,12 +63,23 @@ enum LocalNetwork {
         let broadcast = network | ~mask
         guard broadcast > network else { return [] }
 
-        // Guard against scanning an enormous range behind a very wide mask.
-        guard broadcast - network <= 4096 else { return [] }
+        // Small enough to sweep the whole subnet (excludes network + broadcast).
+        if broadcast - network - 1 <= maxFullScanHosts {
+            return addresses(from: network + 1, upTo: broadcast)
+        }
 
+        // Very large subnet (e.g. a /8 or /16). Scanning it in full is
+        // infeasible, so probe the /24 that contains this device — where
+        // reachable neighbours almost always live.
+        let slash24 = addr & 0xFFFFFF00
+        return addresses(from: slash24 + 1, upTo: slash24 + 255)
+    }
+
+    /// Host addresses in the half-open range [start, end).
+    private static func addresses(from start: UInt32, upTo end: UInt32) -> [String] {
         var hosts: [String] = []
-        var current = network + 1
-        while current < broadcast {
+        var current = start
+        while current < end {
             hosts.append(uint32ToIPv4(current))
             current += 1
         }
